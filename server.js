@@ -133,8 +133,28 @@ app.get("/stats", auth, async (_req, res) => {
 
 async function listRows(table, cols, byCol) {
   const p = await getPool();
+  const T_HISTORY = process.env.T_HISTORY || "litebans_history";
+
+function looksLikeUuid(q){
+  return /^[0-9a-fA-F-]{32,36}$/.test(q);
+}
   return async (req, res) => {
     const { limit, offset, q } = limitOffset(req);
+    let qValue = q;
+
+// Ha uuid mezőre szűrünk, és a user nevet írt be (nem uuid), akkor keressük meg a uuid-t history-ból
+if (q && byCol === "uuid" && !looksLikeUuid(q)) {
+  try{
+    const [hrows] = await p.query(
+      `SELECT uuid FROM \`${T_HISTORY}\` WHERE name LIKE ? ORDER BY id DESC LIMIT 1`,
+      [`%${q}%`]
+    );
+    if (!hrows.length) return res.json({ rows: [] });
+    qValue = hrows[0].uuid;
+  }catch(e){
+    return res.status(500).send("Failed to resolve name via litebans_history");
+  }
+}
     const columns = toCols(cols);
     let qValue = q;
 
