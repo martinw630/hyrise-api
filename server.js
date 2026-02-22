@@ -1,3 +1,17 @@
+async function resolveUuidFromName(name){
+  // node 18+ tartalmaz fetch-et
+  const r = await fetch("https://api.mojang.com/users/profiles/minecraft/" + encodeURIComponent(name));
+  if(!r.ok) return null;
+  const data = await r.json();
+  if(!data?.id) return null;
+  // Mojang 32-es hex -> UUID formázás
+  const id = data.id;
+  return `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
+}
+
+function looksLikeUuid(q){
+  return /^[0-9a-fA-F-]{32,36}$/.test(q);
+}
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -122,8 +136,17 @@ async function listRows(table, cols, byCol) {
   return async (req, res) => {
     const { limit, offset, q } = limitOffset(req);
     const columns = toCols(cols);
-    const where = q ? `WHERE \`${byCol}\` LIKE ?` : "";
-    const params = q ? [`%${q}%`, limit, offset] : [limit, offset];
+    let qValue = q;
+
+if (q && byCol === "uuid" && !looksLikeUuid(q)) {
+  // Ha nem UUID-t írtak be, próbáljuk névből UUID-re feloldani
+  const uuid = await resolveUuidFromName(q);
+  if (!uuid) return res.json({ rows: [] });
+  qValue = uuid;
+}
+
+const where = qValue ? `WHERE \`${byCol}\` LIKE ?` : "";
+const params = qValue ? [`%${qValue}%`, limit, offset] : [limit, offset];
     try {
       const [rows] = await p.query(
         `SELECT ${columns} FROM \`${table}\` ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
@@ -136,8 +159,8 @@ async function listRows(table, cols, byCol) {
   };
 }
 
-app.get("/bans", auth, await listRows(T_BANS, COL_BANS, "name"));
-app.get("/mutes", auth, await listRows(T_MUTES, COL_MUTES, "name"));
-app.get("/kicks", auth, await listRows(T_KICKS, COL_KICKS, "name"));
+app.get("/bans", auth, await listRows(T_BANS, COL_BANS, "uuid"));
+app.get("/mutes", auth, await listRows(T_MUTES, COL_MUTES, "uuid"));
+app.get("/kicks", auth, await listRows(T_KICKS, COL_KICKS, "uuid"));
 
 app.listen(PORT, () => console.log(`[hyrise-api] listening on :${PORT}`));
