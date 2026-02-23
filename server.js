@@ -156,7 +156,6 @@ if (q && byCol === "uuid" && !looksLikeUuid(q)) {
   }
 }
     const columns = toCols(cols);
-    let qValue = q;
 
 if (q && byCol === "uuid" && !looksLikeUuid(q)) {
   // Ha nem UUID-t írtak be, próbáljuk névből UUID-re feloldani
