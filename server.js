@@ -135,37 +135,33 @@ async function listRows(table, cols, byCol) {
   const p = await getPool();
   const T_HISTORY = process.env.T_HISTORY || "litebans_history";
 
-function looksLikeUuid(q){
-  return /^[0-9a-fA-F-]{32,36}$/.test(q);
-}
+  function looksLikeUuid(q) {
+    return /^[0-9a-fA-F-]{32,36}$/.test(q);
+  }
+
   return async (req, res) => {
     const { limit, offset, q } = limitOffset(req);
     let qValue = q;
 
-// Ha uuid mezőre szűrünk, és a user nevet írt be (nem uuid), akkor keressük meg a uuid-t history-ból
-if (q && byCol === "uuid" && !looksLikeUuid(q)) {
-  try{
-    const [hrows] = await p.query(
-      `SELECT uuid FROM \`${T_HISTORY}\` WHERE name LIKE ? ORDER BY id DESC LIMIT 1`,
-      [`%${q}%`]
-    );
-    if (!hrows.length) return res.json({ rows: [] });
-    qValue = hrows[0].uuid;
-  }catch(e){
-    return res.status(500).send("Failed to resolve name via litebans_history");
-  }
-}
+    // Ha uuid mezőre szűrünk, és a user nevet írt be (nem uuid),
+    // akkor keressük meg a uuid-t a litebans_history táblából
+    if (qValue && byCol === "uuid" && !looksLikeUuid(qValue)) {
+      try {
+        const [hrows] = await p.query(
+          `SELECT uuid FROM \`${T_HISTORY}\` WHERE name LIKE ? ORDER BY id DESC LIMIT 1`,
+          [`%${qValue}%`]
+        );
+        if (!hrows.length) return res.json({ rows: [] });
+        qValue = hrows[0].uuid;
+      } catch (e) {
+        return res.status(500).send("Failed to resolve name via litebans_history");
+      }
+    }
+
     const columns = toCols(cols);
+    const where = qValue ? `WHERE \`${byCol}\` LIKE ?` : "";
+    const params = qValue ? [`%${qValue}%`, limit, offset] : [limit, offset];
 
-if (q && byCol === "uuid" && !looksLikeUuid(q)) {
-  // Ha nem UUID-t írtak be, próbáljuk névből UUID-re feloldani
-  const uuid = await resolveUuidFromName(q);
-  if (!uuid) return res.json({ rows: [] });
-  qValue = uuid;
-}
-
-const where = qValue ? `WHERE \`${byCol}\` LIKE ?` : "";
-const params = qValue ? [`%${qValue}%`, limit, offset] : [limit, offset];
     try {
       const [rows] = await p.query(
         `SELECT ${columns} FROM \`${table}\` ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
@@ -177,6 +173,7 @@ const params = qValue ? [`%${qValue}%`, limit, offset] : [limit, offset];
     }
   };
 }
+
 
 app.get("/bans", auth, await listRows(T_BANS, COL_BANS, "uuid"));
 app.get("/mutes", auth, await listRows(T_MUTES, COL_MUTES, "uuid"));
